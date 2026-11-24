@@ -1,0 +1,278 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pixel Reveal</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600&display=swap">
+<style>
+/* Layout: one centered column. Top: a dark "tank" canvas that starts blacked out. Below: clue card, guess grid, keyboard. */
+:root {
+  --abyss: #03050b;
+  --deep: #0b1226;
+  --panel: #111a33;
+  --line: #24315a;
+  --text: #e8eeff;
+  --muted: #8f9cc4;
+  --glow: #f6c453;
+  --right: #f6c453;
+  --near: #4a78d6;
+  --miss: #1b2547;
+  --display: "Space Grotesk", system-ui, sans-serif;
+  --body: "Inter", system-ui, sans-serif;
+  color-scheme: dark;
+}
+html, body { background: var(--abyss); }
+body {
+  margin: 0; color: var(--text); font-family: var(--body); font-size: 15px;
+  padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+h1 { font: 700 1.5rem/1 var(--display); margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.count { font: 500 0.8rem var(--display); color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+.tank { background: var(--deep); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+canvas#art { display: block; width: 100%; height: auto; image-rendering: pixelated; border-radius: 4px; background: #000; }
+.progress { display: flex; gap: 6px; margin-top: 10px; }
+.progress i { flex: 1; height: 4px; border-radius: 2px; background: var(--miss); }
+.progress i.done { background: var(--glow); }
+.progress i.now { background: var(--near); }
+.clue { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.clue small { display: block; font: 500 0.7rem var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.clue p { margin: 0; font-size: 1.05rem; line-height: 1.4; text-wrap: balance; }
+.grid { display: grid; gap: 6px; justify-content: center; }
+.row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: min(100%, 290px); margin: 0 auto; }
+.tile { aspect-ratio: 1; display: grid; place-items: center; border: 2px solid var(--line); border-radius: 4px; font: 700 1.6rem var(--display); text-transform: uppercase; background: transparent; }
+.tile.fill { border-color: var(--muted); }
+.tile.right { background: var(--right); border-color: var(--right); color: #1a1405; }
+.tile.near { background: var(--near); border-color: var(--near); }
+.tile.miss { background: var(--miss); border-color: var(--miss); color: var(--muted); }
+.tile.flip { animation: flip .4s ease both; }
+@keyframes flip { 0% { transform: scaleY(1) } 50% { transform: scaleY(0) } 100% { transform: scaleY(1) } }
+.row.shake { animation: shake .35s; }
+@keyframes shake { 25% { transform: translateX(-6px) } 75% { transform: translateX(6px) } }
+.msg { min-height: 1.4em; text-align: center; color: var(--muted); font-size: 0.9rem; }
+.kb { display: flex; flex-direction: column; gap: 6px; }
+.kr { display: flex; gap: 5px; justify-content: center; }
+.k { flex: 1; max-width: 38px; height: 48px; border: 0; border-radius: 5px; background: var(--line); color: var(--text); font: 600 0.9rem var(--body); text-transform: uppercase; cursor: pointer; padding: 0; }
+.k.wide { max-width: 58px; font-size: 0.7rem; }
+.k.right { background: var(--right); color: #1a1405; }
+.k.near { background: var(--near); }
+.k.miss { background: var(--miss); color: var(--muted); }
+.k:focus-visible, .btn:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+.btn { border: 0; border-radius: 8px; background: var(--glow); color: #1a1405; font: 700 1rem var(--display); padding: 14px 18px; cursor: pointer; width: 100%; }
+.reveal { background: var(--panel); border: 1px solid var(--glow); border-radius: 10px; padding: 16px; display: grid; gap: 10px; }
+.reveal h2 { font: 700 1.2rem var(--display); margin: 0; }
+.reveal p { margin: 0; line-height: 1.5; }
+.small { font-size: 0.8rem; color: var(--muted); }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .tile.flip, .row.shake { animation: none; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Pixel Reveal</h1>
+    <span class="count" id="count"></span>
+  </header>
+
+  <div class="tank">
+    <canvas id="art" aria-label="Hidden pixel picture"></canvas>
+    <div class="progress" id="progress"></div>
+  </div>
+
+  <div id="play" class="wrap" style="gap:16px">
+    <div class="grid" id="grid"></div>
+    <div class="msg" id="msg"></div>
+    <div class="kb" id="kb"></div>
+  </div>
+
+  <div id="between" hidden class="reveal">
+    <h2 id="betweenTitle"></h2>
+    <p id="betweenText"></p>
+    <button class="btn" id="nextBtn" type="button">Next puzzle</button>
+  </div>
+
+  <div id="finale" hidden class="reveal">
+    <h2 id="finaleTitle"></h2>
+    <p id="finaleText"></p>
+    <button class="btn" id="againBtn" type="button">Play again</button>
+  </div>
+</div>
+
+<script>
+/* ===== EDIT ME =====
+   Swap these 6 puzzles for your own inside jokes. Each answer must be exactly 5 letters.
+   No clues are shown. "reveal" is a short line she sees after she solves it. */
+const FOR_NAME = "Alexa";
+const PUZZLES = [
+  { answer: "OCEAN",  reveal: "Nice one. A piece of the picture just appeared." },
+  { answer: "ANGEL",  reveal: "Something is taking shape." },
+  { answer: "WORDS",  reveal: "You are good at this." },
+  { answer: "SWIFT",  reveal: "Halfway there." },
+  { answer: "GLASS",  reveal: "Almost. Keep going." },
+  { answer: "SMILE",  reveal: "Last one done. Here it comes." }
+];
+const FINAL_TITLE = "It's a sea angel!";
+const FINAL_TEXT = "A real animal, about the size of a pea to a thumb, that swims by flapping tiny wings. I made this whole game just for you, " + FOR_NAME + ". Happy to have you as a friend.";
+/* ===================== */
+
+const PIX = {"w": 48, "h": 52, "pal": ["#000000", "#000002", "#030307", "#252c3d", "#1b263d", "#2d467a", "#0b0e18", "#32579e", "#131929", "#233557", "#010000", "#3f62a1", "#46546a", "#4b6b97", "#939b9b", "#c0a77b", "#fff477", "#f4c673", "#ccbc96", "#5376ad", "#f9db85", "#4269b0", "#2c3a57", "#7b7676", "#314e85", "#39507a", "#645241", "#3a5a92", "#6590c1", "#5686cd", "#4c7bc9", "#4574c1"], "d": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001100000000000000000000000000000000000000000000002300000000000000000000000000000000000000000000004400000000000000000000000000000000000000000000015400000012200000000000000000000000000000000000067800000023600000000000000000000000000000000000087410000149100000000000000000000000000000000000:9;<3611:656:000000000000000000000000000000000001=>?@A?365510000000000000000000000000000000000003>B@@@@AC740000000000000000000000000000000000002>BDD@@@A>E2000000000000000000000000000000000000F>>BDDDAA><0000000000000000000000001000000000100<>>BDDAA?><0000000000000000000000011111264499386<>>BDDA?G>F000000000000000000000008HHHHHHHHHHII<JG>BDDA?G>30000000000000000000000065HH77KKKKK===G?BDDAD?GG1000000000000000000000002957;EE===CCCG>?BDAAA?<30000000000000000000000000895HKEC=C==GG??ADDAB>384210000000000000000000000245II=CCCC>>>??ADDA?><II54200000000000000000000018FF5IK=CL>>B??DDDA?G<=I5592:00000000000000000000149F5IK=C>>?AABBD?GJ<=KII55200000000000000000000123FF5IK=G>AADDDA?GJ<<<<II7I610000000000000000000063FF5HIGBAADDDABJJ<<<IK=;7H9210000000000000000001639F5I>?A@@@@ABJJF<<IKKKKHH56:0000000000000000000639F=>?@@@@@A?GFFF<II555555K81000000000000000000063IL>B@@@@@?><3FFFFFF99999461000000000000000000016LL>B@@@AA?GF3F993399933810000000000000000000016;MLL>A@AAAG>33334444486200000000000000000000002HNNLLLLBB?G=L44444886110000000000000000000000015OEE;;;CCC====6662100000000000000000000000000104EE7E7EE;;;C=K<0100000000000000000000000000000:87EH7;ENMO;K=KK9010000000000000000000000000000067EHH7EOMMNOEKKI600000000000000000000000000000015E757EOMMMMME7;F100000000000000000000000000000:4;;HH7NMMMMMME;=60000000000000000000000000000002H7H57ONMMMMMOEE91000000000000000000000000000001FEH5HONMMMMMOEOH200000000000000000000000000000:6;H5HEMMMNMMNE7C8:0000000000000000000000000000015;H7ONNMNMMNO7NF110000000000000000000000000000:8;KKEMNNNMMOE7NK20000000000000000000000000000002IKH;NNNNMMEE;N;610000000000000000000000000000003=IKNNONMNE;EN;6:0000000000000000000000000000006<<ICOEONO777O;8100000000000000000000000000000:2J<<=CEONE777OH600000000000000000000000000000006JJ<G==CE;77E;91100000000000000000000000000000:3JJJJ<<=;77;EF2:0000000000000000000000000000006JJJJJJ<<IKK=F610000000000000000000000000000000:GJJJJJJJ<<F82100000000000000000000000000000000018JJJJJ382:000000000000000000000000000000000000000111:001000000000000000000000000000000000000000000:000000000000000000000000000000000000000000"};
+const MAX_GUESSES = 6;
+const WORDS = new Set(); // any 5 letters allowed, so inside-joke guesses count
+
+const $ = id => document.getElementById(id);
+const cv = $("art"), ctx = cv.getContext("2d");
+cv.width = PIX.w; cv.height = PIX.h;
+const pal = PIX.pal;
+const cellOf = i => PIX.d.charCodeAt(i) - 48;
+
+/* order of pixels revealed: shuffled once, then split into one chunk per puzzle.
+   Black background pixels are skipped so every solve visibly uncovers the animal. */
+function makeOrder() {
+  const subject = [];
+  for (let i = 0; i < PIX.w * PIX.h; i++) if (pal[cellOf(i)] !== "#000000" && pal[cellOf(i)] !== "#000002" && pal[cellOf(i)] !== "#010000") subject.push(i);
+  for (let i = subject.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [subject[i], subject[j]] = [subject[j], subject[i]]; }
+  return subject;
+}
+let order = makeOrder(), shown = 0, level = 0;
+
+function paint(upTo) {
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, cv.width, cv.height);
+  // faint ghost grid so she can see there is something hidden
+  ctx.fillStyle = "#0a1020";
+  for (let y = 0; y < PIX.h; y++) for (let x = 0; x < PIX.w; x++) if ((x + y) % 2 === 0) ctx.fillRect(x, y, 1, 1);
+  for (let k = 0; k < upTo; k++) {
+    const i = order[k];
+    ctx.fillStyle = pal[cellOf(i)];
+    ctx.fillRect(i % PIX.w, Math.floor(i / PIX.w), 1, 1);
+  }
+}
+function paintFull() {
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, cv.width, cv.height);
+  for (let i = 0; i < PIX.w * PIX.h; i++) { ctx.fillStyle = pal[cellOf(i)]; ctx.fillRect(i % PIX.w, Math.floor(i / PIX.w), 1, 1); }
+}
+function chunkEnd(n) { return Math.round(order.length * (n + 1) / PUZZLES.length); }
+function animateTo(target, done) {
+  const step = Math.max(2, Math.round((target - shown) / 40));
+  (function tick() {
+    shown = Math.min(target, shown + step); paint(shown);
+    if (shown < target) requestAnimationFrame(tick); else done && done();
+  })();
+}
+
+/* ---- board ---- */
+let guesses, cur, locked;
+const keyState = {};
+function buildBoard() {
+  const g = $("grid"); g.innerHTML = "";
+  for (let r = 0; r < MAX_GUESSES; r++) {
+    const row = document.createElement("div"); row.className = "row";
+    for (let c = 0; c < 5; c++) { const t = document.createElement("div"); t.className = "tile"; row.appendChild(t); }
+    g.appendChild(row);
+  }
+}
+function buildKeys() {
+  const kb = $("kb"); kb.innerHTML = "";
+  ["qwertyuiop", "asdfghjkl", "zxcvbnm"].forEach((letters, ri) => {
+    const r = document.createElement("div"); r.className = "kr";
+    if (ri === 2) r.appendChild(key("Enter", "ENTER", true));
+    for (const ch of letters) r.appendChild(key(ch, ch));
+    if (ri === 2) r.appendChild(key("Back", "BACK", true));
+    kb.appendChild(r);
+  });
+}
+function key(label, val, wide) {
+  const b = document.createElement("button"); b.type = "button"; b.className = "k" + (wide ? " wide" : "");
+  b.textContent = label; b.dataset.k = val; b.addEventListener("click", () => press(val)); return b;
+}
+function renderProgress() {
+  $("progress").innerHTML = PUZZLES.map((_, i) => `<i class="${i < level ? "done" : i === level ? "now" : ""}"></i>`).join("");
+  $("count").textContent = `Puzzle ${Math.min(level + 1, PUZZLES.length)} of ${PUZZLES.length}`;
+}
+function startLevel() {
+  guesses = []; cur = ""; locked = false;
+  Object.keys(keyState).forEach(k => delete keyState[k]);
+  const p = PUZZLES[level];
+  $("msg").textContent = "";
+  buildBoard(); buildKeys(); renderProgress();
+  $("play").hidden = false; $("between").hidden = true;
+}
+
+function rowEl(i) { return $("grid").children[i]; }
+function drawCurrent() {
+  const row = rowEl(guesses.length);
+  [...row.children].forEach((t, i) => { t.textContent = cur[i] || ""; t.className = "tile" + (cur[i] ? " fill" : ""); });
+}
+function press(v) {
+  if (locked) return;
+  if (v === "ENTER") return submit();
+  if (v === "BACK") { cur = cur.slice(0, -1); return drawCurrent(); }
+  if (/^[a-z]$/i.test(v) && cur.length < 5) { cur += v.toUpperCase(); drawCurrent(); }
+}
+function score(guess, answer) {
+  const res = Array(5).fill("miss"), pool = {};
+  for (let i = 0; i < 5; i++) { if (guess[i] === answer[i]) res[i] = "right"; else pool[answer[i]] = (pool[answer[i]] || 0) + 1; }
+  for (let i = 0; i < 5; i++) if (res[i] !== "right" && pool[guess[i]] > 0) { res[i] = "near"; pool[guess[i]]--; }
+  return res;
+}
+function submit() {
+  if (cur.length < 5) { const r = rowEl(guesses.length); r.classList.remove("shake"); void r.offsetWidth; r.classList.add("shake"); $("msg").textContent = "Needs 5 letters."; return; }
+  const answer = PUZZLES[level].answer.toUpperCase();
+  const res = score(cur, answer), row = rowEl(guesses.length), word = cur;
+  locked = true; $("msg").textContent = "";
+  [...row.children].forEach((t, i) => setTimeout(() => { t.className = "tile flip " + res[i]; }, i * 120));
+  setTimeout(() => {
+    word.split("").forEach((ch, i) => {
+      const rank = { miss: 1, near: 2, right: 3 }, old = keyState[ch];
+      if (!old || rank[res[i]] > rank[old]) keyState[ch] = res[i];
+    });
+    document.querySelectorAll(".k").forEach(b => { const s = keyState[(b.dataset.k || "").toUpperCase()]; if (s) b.className = "k" + (b.classList.contains("wide") ? " wide " : " ") + s; });
+    guesses.push(word); cur = "";
+    if (word === answer) return solved();
+    if (guesses.length >= MAX_GUESSES) {
+      $("msg").textContent = `It was ${answer}. Try again.`;
+      return setTimeout(startLevel, 1800);
+    }
+    locked = false;
+  }, 5 * 120 + 300);
+}
+function solved() {
+  const p = PUZZLES[level];
+  const target = chunkEnd(level);
+  $("play").hidden = true;
+  level++; renderProgress();
+  animateTo(target, () => {
+    if (level >= PUZZLES.length) return finish();
+    $("betweenTitle").textContent = "Solved: " + p.answer;
+    $("betweenText").textContent = p.reveal;
+    $("between").hidden = false;
+  });
+}
+function finish() {
+  $("count").textContent = "Complete";
+  paintFull();
+  $("finaleTitle").textContent = FINAL_TITLE;
+  $("finaleText").textContent = FINAL_TEXT;
+  $("finale").hidden = false;
+}
+$("nextBtn").addEventListener("click", startLevel);
+$("againBtn").addEventListener("click", () => {
+  order = makeOrder(); shown = 0; level = 0; paint(0);
+  $("finale").hidden = true; startLevel();
+});
+document.addEventListener("keydown", e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "Enter") press("ENTER");
+  else if (e.key === "Backspace") press("BACK");
+  else if (/^[a-zA-Z]$/.test(e.key)) press(e.key);
+});
+
+paint(0); startLevel();
+</script>
+</body>
+</html>
